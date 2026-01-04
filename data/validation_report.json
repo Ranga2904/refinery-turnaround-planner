@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-01-04T08:52:33.169565",
+  "overall_valid": true,
+  "summary": {
+    "equipment_valid": true,
+    "failures_valid": true,
+    "scope_valid": true,
+    "referential_integrity_valid": true,
+    "business_rules_valid": true
+  }
+}
