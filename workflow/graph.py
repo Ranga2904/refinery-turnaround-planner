@@ -16,6 +16,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))  # Add project root to path
 from workflow.checkpointer import create_checkpointer
+from utils.audit import log_approval, create_audit_table
 
 
 def sanitize_for_serialization(obj):
@@ -36,6 +37,29 @@ def sanitize_for_serialization(obj):
         return obj.tolist()
     else:
         return obj
+
+def log_agent_approval(state: TurnaroundState, agent_name: str, action: str):
+    """
+    Log approval/rejection to audit table.
+    """
+    try:
+        from utils.audit import log_approval
+        
+        log_approval(
+            session_id=state['session_id'],
+            thread_id=state['session_id'],  # Using session_id as thread_id
+            agent_name=agent_name,
+            action=action,
+            user_email=state.get(f'{agent_name}_approved_by', state['user_email']),
+            feedback=state.get(f'{agent_name}_rejection_reason'),
+            state_snapshot={
+                'current_step': state['current_step'],
+                f'{agent_name}_complete': state.get(f'{agent_name}_complete'),
+                'constraints': state['constraints']
+            }
+        )
+    except Exception as e:
+        print(f"Warning: Audit logging failed: {e}")
 
 class TurnaroundState(TypedDict):
     """
@@ -178,6 +202,11 @@ def run_agent1_node(state: TurnaroundState) -> TurnaroundState:
         state['errors'].append(f"Agent 1 failed: {str(e)}")
         state['current_step'] = 'complete'
     
+    if state.get('agent1_approved'):
+        log_agent_approval(state, 'agent1', 'approved')
+    elif state.get('agent1_rejection_reason'):
+        log_agent_approval(state, 'agent1', 'rejected')
+
     return state
 
 
@@ -224,6 +253,11 @@ def run_agent2_node(state: TurnaroundState) -> TurnaroundState:
         state['errors'].append(f"Agent 2 failed: {str(e)}")
         state['current_step'] = 'complete'
     
+    if state.get('agent2_approved'):
+        log_agent_approval(state, 'agent2', 'approved')
+    elif state.get('agent2_rejection_reason'):
+        log_agent_approval(state, 'agent2', 'rejected')
+
     return state
 
 
@@ -401,6 +435,7 @@ if __name__ == "__main__":
     state['agent1_approved'] = True
     state['agent1_approved_by'] = "test@refinery.com"
     state['agent1_approved_at'] = datetime.now().isoformat()
+
     
     # Continue to Agent 2
     print("\n[Step 3] Continuing to Agent 2...")
