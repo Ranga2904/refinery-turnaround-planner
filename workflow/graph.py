@@ -271,28 +271,33 @@ def wait_for_agent2_approval(state: TurnaroundState) -> TurnaroundState:
 
 def run_agent3_node(state: TurnaroundState) -> TurnaroundState:
     """
-    Execute Agent 3: Executive Translator (stub for now)
+    Execute Agent 3: Executive Translator
     """
     print("[Agent 3] Generating executive memo...")
     
     try:
-        # TODO: Implement Agent 3 with LLM (Day 6)
-        # For now, create a simple text summary
-        summary = state['optimization_summary']
+        from agents.translator import run_agent3
         
-        memo = f"""
-TURNAROUND SCOPE RECOMMENDATION
-
-Budget: ${summary['total_cost']:,.0f} / ${state['constraints']['budget_cap']:,.0f} ({summary['budget_utilization_pct']:.1f}%)
-Duration: {summary['total_duration_parallel']:.1f} days (estimated with parallelization)
-Items Included: {summary['total_included']}
-Items Deferred: {summary['total_deferred']}
-
-Risk Avoided: ${summary['total_risk_avoided']:,.0f}
-Residual Risk: ${summary['residual_risk']:,.0f}
-
-Status: Optimization complete. Detailed analysis available in attached files.
-"""
+        # Convert dicts back to DataFrames
+        risk_df = pd.DataFrame(state['risk_analysis'])
+        optimized_df = pd.DataFrame(state['optimized_scope'])
+        
+        # Handle empty deferred items
+        if state['deferred_items']:
+            deferred_df = pd.DataFrame(state['deferred_items'])
+        else:
+            deferred_df = pd.DataFrame(columns=[
+                'equipment_id', 'work_type', 'expected_loss_avoided', 'deferral_reason'
+            ])
+        
+        # Run Agent 3
+        memo = run_agent3(
+            risk_df,
+            optimized_df,
+            deferred_df,
+            state['optimization_summary'],
+            state['constraints']
+        )
         
         state['executive_memo'] = memo
         state['agent3_complete'] = True
