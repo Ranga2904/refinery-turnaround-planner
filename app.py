@@ -206,18 +206,15 @@ def approve_agent1(session_id: str, user_email: str, feedback: str) -> Tuple[str
         return session_id, pd.DataFrame(), f"✗ Error: {str(e)}"
 
 
-def approve_agent2(session_id: str, user_email: str, feedback: str) -> Tuple[str, str, str, str]:
+def approve_agent2(session_id: str, user_email: str, feedback: str) -> Tuple[str, str, str, str, str, pd.DataFrame, str]:
     """
     Approve Agent 2 and run Agent 3.
-    
-    Returns:
-        (session_id, memo_text, excel_path, pdf_path, status_message)
     """
     global current_thread_id, workflow_app
     
     try:
         if session_id is None:
-            return session_id, "", "", "", "✗ No active session"
+            return session_id, "", None, None, "✗ No active session", pd.DataFrame(), ""
         
         # Get current state
         config = {"configurable": {"thread_id": current_thread_id}}
@@ -231,6 +228,21 @@ def approve_agent2(session_id: str, user_email: str, feedback: str) -> Tuple[str
         # Continue workflow
         workflow_app.update_state(config, current_state.values)
         state = workflow_app.invoke(None, config)
+        
+        # CHECK IF AGENT 2 FAILED
+        if state.get('optimization_summary') is None or len(state.get('errors', [])) > 0:
+            error_msg = f"""❌ OPTIMIZATION FAILED
+
+Errors: {', '.join(state.get('errors', ['Unknown error']))}
+
+Common causes:
+- Budget too low for mandatory regulatory work
+- Duration constraint too tight
+- Infeasible constraint combination
+
+Try increasing budget or duration caps.
+"""
+            return session_id, "", None, None, error_msg, pd.DataFrame(), ""
         
         # Extract final outputs
         memo_text = state['executive_memo']
@@ -258,6 +270,9 @@ def approve_agent2(session_id: str, user_email: str, feedback: str) -> Tuple[str
             session_id
         )
         
+        # Load audit log
+        audit_df, audit_report = load_audit_log_for_session(session_id)
+        
         status_msg = f"""✅ WORKFLOW COMPLETE
 
 ✓ Agent 2 approved by: {user_email}
@@ -271,16 +286,10 @@ def approve_agent2(session_id: str, user_email: str, feedback: str) -> Tuple[str
 ➡️ View memo and download files in Tab 4
 """
         
-        return session_id, memo_text, excel_path, pdf_path, status_msg
-        
-    # Load audit log for this session
-        audit_df, audit_report = load_audit_log_for_session(session_id)
-        
         return session_id, memo_text, excel_path, pdf_path, status_msg, audit_df, audit_report
         
     except Exception as e:
-        return session_id, "", "", "", f"✗ Error: {str(e)}", pd.DataFrame(), ""
-
+        return session_id, "", None, None, f"✗ Error: {str(e)}", pd.DataFrame(), ""
 
 def reject_agent(session_id: str, agent_name: str, user_email: str, reason: str) -> str:
     """
@@ -491,8 +500,8 @@ with gr.Blocks(title="Refinery Turnaround Planner", theme=gr.themes.Soft()) as d
             
             gr.Markdown("### Download Files")
             with gr.Row():
-                excel_download = gr.File(label="📊 Excel Workbook")
-                pdf_download = gr.File(label="📄 PDF Memo")
+                excel_download = gr.File(label="📊 Excel Workbook", type="filepath")
+                pdf_download = gr.File(label="📄 PDF Memo", type="filepath")
             
             tab4_status = gr.Textbox(label="Status", lines=2)
 
@@ -576,7 +585,7 @@ with gr.Blocks(title="Refinery Turnaround Planner", theme=gr.themes.Soft()) as d
     approve2_button.click(
         fn=approve_agent2,
         inputs=[session_state, user_email_input, feedback2_input],
-        outputs=[session_state, memo_display, excel_download, pdf_download, tab3_status]
+        outputs=[session_state, memo_display, excel_download, pdf_download, tab3_status, audit_table, audit_report]
     ).then(
         fn=lambda x: x,  # Copy status to tab 4
         inputs=[tab3_status],
